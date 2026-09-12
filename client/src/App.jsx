@@ -1,6 +1,7 @@
 import React from 'react';
 import Navbar from './components/Navbar';
 import HeroBanner from './components/HeroBanner';
+import CategorySection from './components/CategorySection';
 
 function App() {
   return (
@@ -8,7 +9,7 @@ function App() {
       <Navbar />
       <main>
         <HeroBanner />
-        {/* Next: Category Bar & Produce Grid */}
+        <CategorySection />
       </main>
     </div>
   );
