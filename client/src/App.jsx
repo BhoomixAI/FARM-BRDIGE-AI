@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import HeroBanner from './components/HeroBanner';
 import CategorySection from './components/CategorySection';
 import FilterSidebar from './components/FilterSidebar';
+import ProductGrid from './components/ProductGrid';
 
 function App() {
   return (
@@ -17,9 +18,9 @@ function App() {
           {/* Left Sidebar */}
           <FilterSidebar />
 
-          {/* Right Area: Product Grid will be plugged here */}
+          {/* Right Product Grid */}
           <div className="flex-1 w-full">
-            {/* Next: ProductGrid */}
+            <ProductGrid />
           </div>
         </div>
       </main>
