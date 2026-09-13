@@ -6,6 +6,7 @@ import FilterSidebar from './components/FilterSidebar';
 import ProductGrid from './components/ProductGrid';
 import AIAssistant from './components/AIAssistant';
 import MarketplaceView from './components/MarketplaceView';
+import KisanPortal from './components/KisanPortal';
 
 function App() {
   const [activeTab, setActiveTab] = useState('Home');
@@ -61,16 +62,7 @@ function App() {
         )}
 
         {activeTab === 'For Farmers' && (
-          <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-            <div className="bg-white border border-gray-100 rounded-3xl p-12 shadow-xs">
-              <h2 className="font-serif text-2xl font-bold text-gray-900 mb-2">
-                Kisan Portal & MSP Tracker
-              </h2>
-              <p className="text-gray-500 text-xs sm:text-sm max-w-md mx-auto">
-                Farmer dashboard, seed procurement, and government MSP pricing rates.
-              </p>
-            </div>
-          </div>
+          <KisanPortal onOpenVoiceAssistant={() => setActiveTab('AI Assistant')} />
         )}
       </main>
     </div>
