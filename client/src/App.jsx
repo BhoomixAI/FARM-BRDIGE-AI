@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { LanguageProvider } from './context/LanguageContext';
 import Navbar from './components/Navbar';
 import HeroBanner from './components/HeroBanner';
 import CategorySection from './components/CategorySection';
@@ -7,9 +8,9 @@ import ProductGrid from './components/ProductGrid';
 import AIAssistant from './components/AIAssistant';
 import MarketplaceView from './components/MarketplaceView';
 import KisanPortal from './components/KisanPortal';
-import Footer from './components/Footer'; // <-- Imported Footer
+import Footer from './components/Footer';
 
-function App() {
+function MainApp() {
   const [activeTab, setActiveTab] = useState('Home');
   const [role, setRole] = useState('buyer');
 
@@ -69,10 +70,15 @@ function App() {
         </main>
       </div>
 
-      {/* Persistent Footer */}
       <Footer />
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <LanguageProvider>
+      <MainApp />
+    </LanguageProvider>
+  );
+}
