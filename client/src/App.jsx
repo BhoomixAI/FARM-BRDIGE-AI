@@ -5,12 +5,12 @@ import CategorySection from './components/CategorySection';
 import FilterSidebar from './components/FilterSidebar';
 import ProductGrid from './components/ProductGrid';
 import AIAssistant from './components/AIAssistant';
+import MarketplaceView from './components/MarketplaceView';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('Home'); // Home is now default
+  const [activeTab, setActiveTab] = useState('Home');
   const [role, setRole] = useState('buyer');
 
-  // Sync role switch with views
   const handleRoleChange = (newRole) => {
     setRole(newRole);
     if (newRole === 'seller') {
@@ -20,7 +20,6 @@ function App() {
     }
   };
 
-  // Sync nav clicks with role
   const handleTabChange = (tabName) => {
     setActiveTab(tabName);
     if (tabName === 'AI Assistant' || tabName === 'For Farmers') {
@@ -53,21 +52,12 @@ function App() {
           </>
         )}
 
-        {activeTab === 'AI Assistant' && (
-          <AIAssistant />
+        {activeTab === 'Marketplace' && (
+          <MarketplaceView onBackToVoice={() => setActiveTab('AI Assistant')} />
         )}
 
-        {activeTab === 'Marketplace' && (
-          <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-            <div className="bg-white border border-gray-100 rounded-3xl p-12 shadow-xs">
-              <h2 className="font-serif text-2xl font-bold text-gray-900 mb-2">
-                Wholesale & Direct Mandi Marketplace
-              </h2>
-              <p className="text-gray-500 text-xs sm:text-sm max-w-md mx-auto">
-                Dedicated multi-vendor mandi trading interface under construction.
-              </p>
-            </div>
-          </div>
+        {activeTab === 'AI Assistant' && (
+          <AIAssistant />
         )}
 
         {activeTab === 'For Farmers' && (
