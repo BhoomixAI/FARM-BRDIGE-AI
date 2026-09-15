@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
   Sprout, 
@@ -9,6 +9,7 @@ import {
   CheckCircle2, 
   Weight 
 } from 'lucide-react';
+import { getProduce } from '../services/aiVoiceService';
 
 const farmerLots = [
   {
@@ -91,10 +92,49 @@ const farmerLots = [
   },
 ];
 
+// Fallback produce images already used elsewhere in this project, keyed by the
+// backend's canonical produce name. The backend attaches `image` for Potato;
+// listings without an image reuse these existing project assets.
+const PRODUCE_IMAGE_FALLBACKS = {
+  Tomato: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&auto=format&fit=crop&q=80',
+};
+
+// Maps a GET /api/produce item onto this view's existing lot card shape.
+// Live listings are namespaced with an `api-` id so their keys can never
+// collide with the curated mock lots below.
+function mapApiListingToLot(p, index) {
+  const produceName = p.produce || 'Produce';
+  return {
+    id: `api-${p.id ?? index}`,
+    name: `Farmer ${p.farmerId || ''}`.trim(),
+    avatar: p.image || PRODUCE_IMAGE_FALLBACKS[produceName] || PRODUCE_IMAGE_FALLBACKS.Tomato,
+    location: 'Direct Mandi Listing',
+    rating: 'New',
+    verified: false,
+    produce: produceName,
+    grade: 'Farm Direct',
+    availableQty: `${p.quantity ?? '?'} ${p.unit || 'kg'} available`,
+    price: p.price ?? 0,
+    mandiLocation: 'FarmBridge Direct',
+  };
+}
+
 export default function MarketplaceView({ onBackToVoice }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [apiLots, setApiLots] = useState([]);
 
-  const filteredLots = farmerLots.filter((lot) =>
+  useEffect(() => {
+    let cancelled = false;
+    getProduce()
+      .then((items) => {
+        if (cancelled || !Array.isArray(items)) return;
+        setApiLots(items.map(mapApiListingToLot));
+      })
+      .catch(() => { /* backend unreachable: keep showing curated lots */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const filteredLots = [...apiLots, ...farmerLots].filter((lot) =>
     lot.produce.toLowerCase().includes(searchTerm.toLowerCase()) ||
     lot.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     lot.location.toLowerCase().includes(searchTerm.toLowerCase())

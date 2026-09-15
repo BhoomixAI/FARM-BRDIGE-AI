@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const aiService = require("./aiService");
+const { createListingFromSellerIntent } = require("./aiService");
 
 const app = express();
 
@@ -15,8 +16,17 @@ const produceListings = [
     produce: "Tomato",
     quantity: 500,
     unit: "kg",
-    price: 25
-  }
+    price: 25,
+  },
+  {
+    farmerId: "F001",
+    produce: "Potato",
+    quantity: 1000,
+    unit: "kg",
+    price: 22,
+    id: 2,
+    image: "https://images.unsplash.com/photo-1531572753322-ad063cecc148?w=600&auto=format&fit=crop&q=80",
+  },
 ];
 
 const buyerRequirements = [
@@ -70,6 +80,12 @@ app.use(express.json());
 
 app.post("/api/produce", (req, res) => {
   const produce = req.body;
+  if (!produce || !produce.produce || !produce.quantity) {
+    return res.status(400).json({ error: "Missing required fields: produce and quantity are required" });
+  }
+  if (typeof produce.quantity !== "number" || produce.quantity <= 0) {
+    return res.status(400).json({ error: "Invalid quantity: must be a positive number" });
+  }
   produceListings.push(produce);
   res.status(201).json({ message: "Produce added successfully", produce });
 });
@@ -90,6 +106,12 @@ app.get("/api/produce/:farmerId", (req, res) => {
 
 app.post("/api/buyer-requirements", (req, res) => {
   const requirement = req.body;
+  if (!requirement || !requirement.buyerId || !requirement.produce || requirement.quantity == null) {
+    return res.status(400).json({ error: "Missing required fields: buyerId, produce and quantity are required" });
+  }
+  if (typeof requirement.quantity !== "number" || requirement.quantity <= 0) {
+    return res.status(400).json({ error: "Invalid quantity: must be a positive number" });
+  }
   buyerRequirements.push(requirement);
   res.status(201).json({ message: "Buyer requirement added successfully", requirement });
 });
@@ -183,6 +205,21 @@ app.post("/api/voice/process", async (req, res) => {
     const intent = await aiService.getVoiceIntent(text);
     const context = aiService.buildContextFromIntent(intent, produceListings, buyerRequirements, farmers, buyers);
 
+    if (intent.intent === "UNKNOWN") {
+      return res.status(400).json({ error: "Could not determine intent. Please speak clearly.", intent });
+    }
+
+    let sellerListing = null;
+    if (intent.intent === "SELLER") {
+      const qty = Number(intent.quantity);
+      if (!intent.product || !intent.product.trim() || !qty || qty <= 0) {
+        return res.status(400).json({ error: "Seller listing needs a product and a positive quantity. Please speak clearly.", intent });
+      }
+      sellerListing = createListingFromSellerIntent(intent);
+      produceListings.push(sellerListing);
+      context.matches = [sellerListing];
+    }
+
     const requirement = {
       intent: intent.intent,
       product: intent.product,
@@ -193,7 +230,12 @@ app.post("/api/voice/process", async (req, res) => {
       price: intent.price,
     };
 
-    const response = await aiService.getAssistantResponse(requirement, context, text);
+    let response;
+    if (intent.intent === "SELLER") {
+      response = `Your listing has been created successfully! ${sellerListing.produce} \u2014 ${sellerListing.quantity} ${sellerListing.unit} at \u20B9${sellerListing.price}/${sellerListing.unit}. Farmer ID: ${sellerListing.farmerId}.`;
+    } else {
+      response = await aiService.getAssistantResponse(requirement, context, text);
+    }
 
     if (sessionId) {
       const conv = conversations.get(sessionId) || { history: [] };

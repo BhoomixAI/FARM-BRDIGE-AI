@@ -14,6 +14,7 @@ function chatCompletion(messages) {
       messages: messages,
       temperature: 0.7,
     });
+    const dataBytes = Buffer.from(data, 'utf8');
 
     const apiUrl = AI_API_BASE_URL.replace(/\/$/, '') + '/chat/completions';
     const url = new URL(apiUrl);
@@ -26,7 +27,7 @@ function chatCompletion(messages) {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
-        "Content-Length": data.length,
+        "Content-Length": dataBytes.length,
       },
     };
 
@@ -72,17 +73,40 @@ function buildContextFromIntent(intent, produceListings, buyerReqs, farmers, buy
   };
 
   if (intent.intent === "BUYER") {
+    const query = (intent.product || "").toLowerCase();
     const matchedProduce = produceListings.filter(
       (p) =>
-        p.produce.toLowerCase().includes((intent.product || "").toLowerCase()) ||
-        (intent.product && p.produce.toLowerCase().includes(intent.product.toLowerCase()))
+        (p.produce.toLowerCase().includes(query) || query.includes(p.produce.toLowerCase())) &&
+        (intent.quantity == null || p.quantity >= intent.quantity)
     );
     context.produceListings = matchedProduce;
+    context.matches = matchedProduce;
+
+    if (intent.location) {
+      const buyerLoc = buyers.find((b) => b.location && b.location.city && intent.location && b.location.city.toLowerCase() === intent.location.toLowerCase());
+      if (buyerLoc && buyerLoc.location) {
+        const buyLat = buyerLoc.location.lat, buyLng = buyerLoc.location.lng;
+        matchedProduce.sort((a, b) => {
+          const farmerA = farmers.find((f) => f.farmerId === a.farmerId);
+          const farmerB = farmers.find((f) => f.farmerId === b.farmerId);
+          const distA = farmerA && farmerA.location ? Math.sqrt((farmerA.location.lat - buyLat) ** 2 + (farmerA.location.lng - buyLng) ** 2) : Infinity;
+          const distB = farmerB && farmerB.location ? Math.sqrt((farmerB.location.lat - buyLat) ** 2 + (farmerB.location.lng - buyLng) ** 2) : Infinity;
+          return distA - distB;
+        });
+      }
+    }
 
     const farmer = farmers.find((f) =>
       matchedProduce.some((p) => p.farmerId === f.farmerId)
     );
-    const buyer = buyers.find((b) => b.buyerId === "B001");
+
+    let buyer = null;
+    if (intent.location) {
+      buyer = buyers.find((b) => b.location && b.location.city && intent.location && b.location.city.toLowerCase() === intent.location.toLowerCase());
+    }
+    if (!buyer) {
+      buyer = buyers.length > 0 ? buyers[0] : null;
+    }
 
     if (farmer && buyer) {
       const lat1 = farmer.location.lat, lon1 = farmer.location.lng;
@@ -94,17 +118,73 @@ function buildContextFromIntent(intent, produceListings, buyerReqs, farmers, buy
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distanceKm = Number((R * c).toFixed(2));
       context.logistics = { farmer, buyer, pickupLocation: farmer.location, deliveryLocation: buyer.location, distanceKm };
-      context.matches = matchedProduce;
     }
   } else if (intent.intent === "SELLER") {
+    const productName = (intent.product || "").trim().toLowerCase();
     const matchingReq = buyerReqs.find(
-      (r) => r.produce.toLowerCase().includes((intent.product || "").toLowerCase())
+      (r) => r.produce.toLowerCase().includes(productName)
     );
     context.buyerRequirements = matchingReq ? [matchingReq] : buyerReqs;
   }
 
   context.intent = intent;
   return context;
+}
+
+let nextListingId = 100;
+
+function getNextId() {
+  return nextListingId++;
+}
+
+const PRODUCT_ALIASES = {
+  aloo: "potato",
+  आलू: "potato",
+  tamatar: "tomato",
+  टमाटर: "tomato",
+  pyaaz: "onion",
+  प्याज़: "onion",
+  gajar: "carrot",
+  गाजर: "carrot",
+  gobhi: "cauliflower",
+  गोभी: "cauliflower",
+};
+
+const DEFAULT_PRICES = {
+  tomato: 25,
+  onions: 30,
+  wheat: 20,
+  rice: 35,
+  mango: 80,
+  banana: 15,
+};
+
+const POTATO_IMAGE = "https://images.unsplash.com/photo-1531572753322-ad063cecc148?w=600&auto=format&fit=crop&q=80";
+
+function createListingFromSellerIntent(intent) {
+  const rawProduct = (intent.product || "").trim();
+  let productKey = rawProduct.toLowerCase();
+  if (productKey === "potatoes") productKey = "potato";
+  const productName = PRODUCT_ALIASES[productKey] || productKey;
+  const quantity = intent.quantity || 0;
+  const unit = intent.unit || "kg";
+  const farmerId = "F001";
+  const price = (typeof intent.price === "number" && intent.price > 0) ? intent.price : (DEFAULT_PRICES[productName] || 25);
+
+  const listing = {
+    id: getNextId(),
+    farmerId,
+    produce: productName.charAt(0).toUpperCase() + productName.slice(1).toLowerCase(),
+    quantity,
+    unit,
+    price,
+  };
+
+  if (listing.produce === "Potato") {
+    listing.image = POTATO_IMAGE;
+  }
+
+  return listing;
 }
 
 async function getVoiceIntent(text) {
@@ -151,20 +231,42 @@ Input: "${text}"`;
 }
 
 async function getAssistantResponse(requirement, context, originalText) {
+  let marketplaceInfo = "No matching produce listings found.";
+  if (context.matches && context.matches.length > 0) {
+    const listings = context.matches.map(m => `${m.produce} \u2014 ${m.quantity} ${m.unit} available at \u20B9${m.price}/${m.unit} (Farmer: ${m.farmerId})`).join("\n");
+    marketplaceInfo = `Matching listings found:\n${listings}`;
+  } else if (context.produceListings && context.produceListings.length > 0) {
+    const listings = context.produceListings.map(m => `${m.produce} \u2014 ${m.quantity} ${m.unit} at \u20B9${m.price}/${m.unit} (Farmer: ${m.farmerId})`).join("\n");
+    marketplaceInfo = `Available produce:\n${listings}`;
+  }
+
+  let logisticsInfo = "No logistics data available.";
+  if (context.logistics) {
+    logisticsInfo = `Pickup: ${context.logistics.pickupLocation.city}, Delivery: ${context.logistics.deliveryLocation.city}, Distance: ${context.logistics.distanceKm} km.`;
+  }
+
   const prompt = `You are an agricultural marketplace AI assistant for FarmBridge AI. Generate a concise, natural-language response based on the user's requirement, available marketplace context, and their original query.
 
-Requirement: ${JSON.stringify(requirement)}
-Context: ${JSON.stringify(context)}
-Original Text: ${originalText}
+User Requirement: ${JSON.stringify(requirement)}
+Original Query: ${originalText}
 
-Provide a brief, helpful response that addresses the agricultural marketplace query. Be conversational and practical. If the user is a buyer, mention matching farmers, distance, and produce availability. If the user is a seller, mention buyer requirements and how to list produce.`;
+MARKETPLACE LISTINGS:
+${marketplaceInfo}
+
+LOGISTICS:
+${logisticsInfo}
+
+INSTRUCTIONS:
+- If there are matching listings, mention them by name, quantity, price, and location.
+- If there are NO matching listings, clearly state: "No current listing found for [product]."
+- Be conversational and practical.`;
 
   const response = await chatCompletion([
-    { role: "system", content: "You are a helpful agricultural marketplace assistant. Respond concisely and naturally." },
+    { role: "system", content: "You are a helpful agricultural marketplace assistant. Respond concisely and naturally. Always reference actual marketplace listings." },
     { role: "user", content: prompt },
   ]);
 
   return response.choices[0].message.content;
 }
 
-module.exports = { getVoiceIntent, getAssistantResponse, buildContextFromIntent };
+module.exports = { getVoiceIntent, getAssistantResponse, buildContextFromIntent, createListingFromSellerIntent };
